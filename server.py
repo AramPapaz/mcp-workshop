@@ -6,17 +6,12 @@ from typing import Annotated
 from urllib.parse import quote
 from urllib.request import urlopen
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 from pydantic import Field
 
 
-# Create the MCP server. Streamable HTTP is configured below for remote use.
-mcp = FastMCP(
-    "demo-server",
-    host="0.0.0.0",
-    port=8000,
-    stateless_http=True,
-)
+# Create the MCP server.
+mcp = MCPServer("demo-server")
 
 @mcp.tool(title="English news: Get word frequency")
 def english_word_frequency(
@@ -135,4 +130,12 @@ def english_example_sentences(
 
 
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http")
+    try:
+        mcp.run(
+            transport="streamable-http",
+            host="0.0.0.0",
+            port=8000,
+            stateless_http=True,
+        )
+    except KeyboardInterrupt:
+        pass
