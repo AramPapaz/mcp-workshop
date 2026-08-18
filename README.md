@@ -1,6 +1,22 @@
 # ECCB MCP Workshop: Setup and Run
 
-## 1. Initial setup
+## Overview
+
+This Codespaces setup runs the example MCP server and exposes it through a
+public port. An external agent can query the server's tools, and `chat.py`
+provides a simple terminal interface for chatting with that agent.
+
+```mermaid
+flowchart LR
+    Chat["chat.py"] -->|"question"| Agent["External agent"]
+    Agent -->|"tool request"| Server["server.py"]
+    Server -->|"term search"| FlatFile["STRING term file"]
+    Server -->|"annotation request"| API["STRING API"]
+    Server -->|"tool results"| Agent
+    Agent -->|"answer"| Chat
+```
+
+## 1. Initial setup (use Chrome browser for compatibility)
 
 1. Open the project repository on GitHub.
 2. Select **Code**, then **Codespaces**, then **Create codespace**.
@@ -13,12 +29,6 @@ Once setup is complete, start the MCP server:
 ```bash
 ./server.py >& server.log
 ```
-
-## Workshop examples
-
-`server.py` provides two STRING-based tools: one searches a local term file,
-and the other retrieves Gene Ontology Biological Process annotations for a
-protein.
 
 The server output is written to `server.log`. It includes messages similar to:
 
@@ -66,7 +76,9 @@ Click `server.log` in the left-hand file explorer and keep it open on the right.
 ./chat.py
 ```
 
-The client reads the server URL from `chat.conf`. You can now start interacting with the MCP server through the chat interface.
+The chat client reads the server URL from `chat.conf` and sends tool requests to
+the running `server.py` server. Its two example tools search Biological Process
+descriptions in a flat file and retrieve annotations from an external API.
 
 Example prompts:
 
