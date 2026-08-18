@@ -2,134 +2,182 @@
 
 import sys
 from json import load
+from pathlib import Path
+from subprocess import run
 from typing import Annotated
-from urllib.parse import quote
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import urlopen
 
 from mcp.server import MCPServer
 from pydantic import Field
 
 
+HUMAN_PROTEIN_DATA_DIRECTORY = Path(__file__).parent / "data"
+HUMAN_BIOLOGICAL_PROCESS_TERMS = (
+    HUMAN_PROTEIN_DATA_DIRECTORY / "9606.protein.enrichment.terms.v12.0.txt"
+)
+HUMAN_BIOLOGICAL_PROCESS_TERMS_URL = (
+    "https://stringdb-downloads.org/download/protein.enrichment.terms.v12.0/"
+    "9606.protein.enrichment.terms.v12.0.txt.gz"
+)
+
+
 # Create the MCP server.
-mcp = MCPServer("demo-server")
+mcp = MCPServer("string-workshop")
 
-@mcp.tool(title="English news: Get word frequency")
-def english_word_frequency(
-    input_word: Annotated[
+
+@mcp.tool(title="STRING: Search human Biological Process terms")
+def search_human_biological_process_terms(
+    query: Annotated[
         str,
         Field(
             description=(
-                "Required. A single English word to look up in the supplied 2025 English news corpus. "
-                "Example: climate"
-            )
-        ),
-    ],
-    case_sensitive: Annotated[
-        bool,
-        Field(
-            description=(
-                "Optional. Set to true only when the user requests a case-sensitive lookup. "
-                "Default: false."
-            )
-        ),
-    ] = False,
-    part_of: Annotated[
-        bool,
-        Field(
-            description=(
-                "Optional. Set to true to total the counts of all dataset entries that contain the "
-                "supplied text, instead of requiring an exact match. Default: false."
-            )
-        ),
-    ] = False,
-) -> dict:
-    """
-    Returns the total count for matching entries in the supplied English news corpus.
-
-    By default, this looks up one whole word without considering case. When
-    `part_of` is true, it totals the counts of every dataset entry that contains
-    the supplied text.
-
-    If no entries match, the total count is 0. This does not prove that the word
-    never occurs outside the supplied dataset.
-    """
-    print(
-        "Tool english_word_frequency called with parameters: "
-        f"input_word={input_word}, case_sensitive={case_sensitive}, part_of={part_of}",
-        file=sys.stderr,
-    )
-
-    
-    word = input_word.strip()
-
-    if not case_sensitive:
-        word = word.lower()
-
-    total_count = 0 
-
-    with open("data/eng_news_2025_100K-words.txt", encoding="utf-8") as frequency_file:
-
-        for line in frequency_file:
-            _, corpus_word, count = line.rstrip("\n").split("\t")
-            comparison_word = corpus_word
-            count = int(count)
-
-            if not case_sensitive:
-                comparison_word = corpus_word.lower()
-
-            if part_of and word in comparison_word:
-                total_count += count
-            elif word == comparison_word:
-               total_count += count
-            
-    return {"Total occurence:" : total_count}
-
-
-@mcp.tool(title="English news: Get example sentences")
-def english_example_sentences(
-    word: Annotated[
-        str,
-        Field(
-            description=(
-                "Required. A single English word for which to retrieve example sentences from the "
-                "external Leipzig Corpora Collection API. Example: climate"
+                "Required. Text to search for in human Gene Ontology Biological Process term "
+                "descriptions. Searches case-insensitively. Example: cell cycle"
             )
         ),
     ],
     limit: Annotated[
         int,
         Field(
-            description=(
-                "Optional. Maximum number of example sentences to return. Keep this small to avoid "
-                "an oversized response. Default: 3."
-            ),
-            ge=1,  # Greater than or equal to 1.
-            le=5,  # Less than or equal to 5.
+            description="Optional. Maximum number of matching rows to return. Default: 5.",
+            ge=1,
+            le=20,
         ),
-    ] = 3,
+    ] = 5,
 ) -> dict:
     """
-    Returns example sentences from the external Leipzig Corpora Collection API.
+    Finds human Gene Ontology Biological Process terms whose descriptions match
+    the supplied text.
 
-    The examples come from the English news corpus.
-    The response includes the total number of available sentences and up to the requested number of examples.
+    Each match contains a STRING protein ID, GO ID, and term description.
     """
     print(
-        "Tool english_example_sentences called with parameters: "
-        f"word={word}, limit={limit}",
+        "Tool search_human_biological_process_terms called with parameters: "
+        f"query={query}, limit={limit}",
         file=sys.stderr,
     )
 
-    url = (
-        "https://api.wortschatz-leipzig.de/ws/sentences/eng_news_2013_3M/sentences/"
-        f"{quote(word.strip())}?limit={limit}"
+    search_text = query.strip()
+    if not search_text:
+        return {"error": "query must not be empty"}
+
+    if not HUMAN_BIOLOGICAL_PROCESS_TERMS.is_file():
+        return {"error": "Human Biological Process term data is unavailable."}
+
+    matches = []
+    more_matches = False
+
+    with open(HUMAN_BIOLOGICAL_PROCESS_TERMS, encoding="utf-8") as term_file:
+        for line in term_file:
+            description = line.rstrip().split("\t")[3]
+            if search_text.casefold() not in description.casefold():
+                continue
+
+            if len(matches) == limit:
+                more_matches = True
+                break
+
+            matches.append(line.rstrip())
+
+    return {
+        "query": search_text,
+        "species": 9606,
+        "matches": matches,
+        "more_matches": more_matches,
+    }
+
+
+@mcp.tool(title="STRING: Get Gene Ontology Biological Process annotations")
+def string_biological_process_annotations(
+    identifier: Annotated[
+        str,
+        Field(
+            description=(
+                "Required. One identifier accepted by STRING. Example: CDK1"
+            )
+        ),
+    ],
+    species: Annotated[
+        int,
+        Field(
+            description="Optional. NCBI taxonomy identifier for the proteins. Default: 9606 (human).",
+            ge=1,
+        ),
+    ] = 9606,
+    limit: Annotated[
+        int,
+        Field(
+            description=(
+                "Optional. Maximum number of Biological Process annotations to return. Default: 10."
+            ),
+            ge=1,
+            le=50,
+        ),
+    ] = 10,
+) -> dict:
+    """
+    Gets Gene Ontology Biological Process annotations for one protein.
+    """
+    print(
+        "Tool string_biological_process_annotations called with parameters: "
+        f"identifier={identifier}, species={species}, limit={limit}",
+        file=sys.stderr,
     )
 
-    with urlopen(url, timeout=10) as response:
-        return load(response)
+    identifier = identifier.strip()
+
+    if not identifier or "," in identifier or "\n" in identifier:
+        return {"error": "Provide exactly one identifier."}
+
+    parameters = urlencode(
+        {
+            "identifiers": identifier,
+            "species": species,
+            "caller_identity": "eccb_mcp_workshop",
+        }
+    )
+    url = f"https://string-db.org/api/json/functional_annotation?{parameters}"
+
+    try:
+        with urlopen(url, timeout=20) as response:
+            annotations = load(response)
+    except HTTPError as error:
+        return {"error": f"Could not retrieve annotations (HTTP {error.code})."}
+    except URLError as error:
+        return {"error": "Could not retrieve annotations."}
+
+    biological_process_annotations = [
+        annotation
+        for annotation in annotations
+        if annotation["category"] == "Process"
+    ]
+
+    return {
+        "input_identifier": identifier,
+        "species": species,
+        "biological_process_annotations": biological_process_annotations[:limit],
+        "more_annotations": len(biological_process_annotations) > limit,
+    }
 
 
 if __name__ == "__main__":
+    HUMAN_PROTEIN_DATA_DIRECTORY.mkdir(exist_ok=True)
+
+    if not HUMAN_BIOLOGICAL_PROCESS_TERMS.exists():
+        print("Downloading STRING v12.0 human Biological Process terms...", file=sys.stderr)
+        command = (
+            f"curl -L {HUMAN_BIOLOGICAL_PROCESS_TERMS_URL} | gzip -dc | "
+            f"grep 'Biological Process' > {HUMAN_BIOLOGICAL_PROCESS_TERMS}"
+        )
+        if run(command, shell=True).returncode != 0:
+            sys.exit(1)
+
+    if not HUMAN_BIOLOGICAL_PROCESS_TERMS.exists():
+        print("Could not download human Biological Process terms.", file=sys.stderr)
+        sys.exit(1)
+
     try:
         mcp.run(
             transport="streamable-http",

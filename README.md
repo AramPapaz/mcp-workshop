@@ -28,6 +28,23 @@ Once setup is complete, start the MCP server:
 ./server.py >& server.log
 ```
 
+## STRING dataset for the local text-search example
+
+The local tool searches STRING's human Gene Ontology Biological Process terms.
+On its first start, the server creates `data/`, downloads the enrichment-term
+file, and keeps only its Biological Process rows in
+`data/9606.protein.enrichment.terms.v12.0.txt`. The downloaded file is
+intentionally not committed to Git.
+
+This file uses STRING protein IDs, not gene-name aliases. The local tool
+searches term descriptions only; use the API example for gene names such as
+`CDK1`.
+
+The other example tool calls STRING's public functional-annotation API and
+does not need an API key. It returns only Gene Ontology Biological Process
+terms, not molecular function, cellular component, pathway, domain, or
+publication annotations.
+
 The server output is written to `server.log`. It includes messages similar to:
 
 ```text
@@ -72,6 +89,11 @@ Click `server.log` in the left-hand file explorer and keep it open on the right.
 
 The client reads the server URL from `chat.conf`. You can now start interacting with the MCP server through the chat interface.
 
+Example prompts:
+
+- `Search the human Biological Process terms for cell cycle.`
+- `What Gene Ontology Biological Process annotations does human CDK1 have?`
+
 ## Troubleshooting
 
 - Ensure the server is fully running before starting `chat.py`.
@@ -79,6 +101,7 @@ The client reads the server URL from `chat.conf`. You can now start interacting 
 - Ensure both values in `chat.conf` have been replaced before starting the chat client.
 - If the endpoint fails, double-check the `/mcp` suffix.
 
-## Dataset included
+## Example data sources
 
-The included example dataset is from ['The project Wortschatz Leipzig'](https://wortschatz.uni-leipzig.de/en)
+- [STRING v12.0 human protein enrichment terms](https://stringdb-downloads.org/download/protein.enrichment.terms.v12.0/9606.protein.enrichment.terms.v12.0.txt.gz)
+- [STRING functional annotation API](https://string-db.org/api/tsv/functional_annotation?identifiers=cdk1)
